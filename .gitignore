@@ -47,3 +47,6 @@ uv.lock
 # Handover
 HANDOVER.md
 handlers.md
+
+# Feature planning (secret)
+newfeatures.md

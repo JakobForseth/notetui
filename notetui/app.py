@@ -15,6 +15,7 @@ from notetui.notes import NoteManager
 from notetui.calendar import Calendar
 from notetui.todolist import TodoList, TodoItem
 from notetui.search import SearchModalScreen
+from notetui.vim_editor import VimTextArea
 
 
 class NoteTUI(App):
@@ -205,10 +206,11 @@ class NoteTUI(App):
         """
         super().__init__()
         self.note_manager = NoteManager(notes_dir)
-        self.editor: TextArea | None = None
+        self.editor: VimTextArea | None = None
         self.calendar_widget: Calendar | None = None
         self.todo_list: TodoList | None = None
         self._previous_date: datetime | None = None
+        self._content_dirty: bool = False
         self.current_date = datetime.now()
 
     def compose(self) -> ComposeResult:
@@ -221,7 +223,7 @@ class NoteTUI(App):
                     with Horizontal(id="info-bar"):
                         yield Label(self._get_status_text(), id="status-text")
                         yield Label(self._get_file_path(), id="file-path")
-                    yield TextArea(
+                    yield VimTextArea(
                         self.note_manager.get_note_content(self.current_date),
                         language="markdown",
                         theme="dracula",
@@ -247,17 +249,21 @@ class NoteTUI(App):
         """Handle mount event."""
         self.title = "NoteTUI - Daily Notes"
         self.sub_title = "Press Ctrl+H for help"
-        self.editor = self.query_one(TextArea)
+        self.editor = self.query_one(VimTextArea)
         self.calendar_widget = self.query_one(Calendar)
         self.todo_list = self.query_one(TodoList)
         # Track the initial date
         self._previous_date = self.current_date
+        # Start autosave timer (every 60 seconds)
+        self.set_interval(60, self._autosave)
         # Move cursor to line 2 on startup
         if self.editor:
             self.editor.move_cursor((1, 0))
         # Scan for todos
         if self.todo_list:
             self.todo_list.scan_notes()
+        # Update info bar to show vim mode
+        self._update_info_bar()
 
     def watch_current_date(self, new_date: datetime) -> None:
         """React to date changes."""
@@ -278,6 +284,22 @@ class NoteTUI(App):
 
         # Remember this date for next time
         self._previous_date = new_date
+        # Reset dirty flag after loading new content
+        self._content_dirty = False
+
+    def on_text_area_changed(self, event: TextArea.Changed) -> None:
+        """Track when content has been modified."""
+        self._content_dirty = True
+
+    def on_vim_text_area_mode_changed(self, event) -> None:
+        """Update status bar when vim mode changes."""
+        self._update_info_bar()
+
+    def _autosave(self) -> None:
+        """Autosave if content has changed."""
+        if self._content_dirty and self.editor:
+            self._save_current_note()
+            self._content_dirty = False
 
     def watch_show_calendar(self, show: bool) -> None:
         """React to calendar visibility changes."""
@@ -323,7 +345,8 @@ class NoteTUI(App):
         day_name = self.current_date.strftime("%A")
         date_str = self.current_date.strftime("%d %b %Y")
         exists = "📝" if self.note_manager.note_exists(self.current_date) else "✨"
-        return f"{exists} {day_name}, {date_str}"
+        mode = self.editor.vim_mode if self.editor and self.editor.vim_mode else "NORMAL"
+        return f"-- {mode} -- {exists} {day_name}, {date_str}"
 
     def _get_file_path(self) -> str:
         """Get the file path for display."""
@@ -333,6 +356,7 @@ class NoteTUI(App):
     def action_save(self) -> None:
         """Save the current note."""
         self._save_current_note()
+        self._content_dirty = False
         self.notify("Note saved!", severity="information")
 
     def action_refresh(self) -> None:

@@ -170,8 +170,21 @@ class TodoList(Container):
             self.todos = todos
             return
 
-        # Get all markdown files
-        for note_file in sorted(self.notes_dir.glob("*.md"), reverse=True):
+        # Get all markdown files and sort by date (newest first)
+        note_files = []
+        for note_file in self.notes_dir.glob("*.md"):
+            try:
+                # Parse date from filename (format: DD-Mmm-YYYY.md)
+                file_date = datetime.strptime(note_file.stem, "%d-%b-%Y")
+                note_files.append((file_date, note_file))
+            except ValueError:
+                # Skip files that don't match the date format
+                continue
+
+        # Sort by date descending (newest first)
+        note_files.sort(key=lambda x: x[0], reverse=True)
+
+        for _, note_file in note_files:
             try:
                 content = note_file.read_text()
                 # Extract date from filename (e.g., "21-Nov-2025.md")
