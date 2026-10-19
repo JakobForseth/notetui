@@ -38,6 +38,14 @@ class TodoItem(Static):
         background: ansi_blue;
         color: ansi_black;
     }
+
+    TodoItem .todo-reminder {
+        color: ansi_bright_black;
+        text-style: italic;
+        padding-left: 5;
+    }
+
+    TodoItem:focus .todo-reminder { color: ansi_black; }
     """
 
     can_focus = True
@@ -49,7 +57,8 @@ class TodoItem(Static):
             super().__init__()
 
     def __init__(self, text: str, date_str: str, file_path: Path, line_number: int,
-                 is_point: bool = False, priority: int | None = None, has_notes: bool = False, **kwargs):
+                 is_point: bool = False, priority: int | None = None, reminder: str | None = None,
+                 has_notes: bool = False, **kwargs):
         """Initialize a todo item.
 
         Args:
@@ -64,6 +73,7 @@ class TodoItem(Static):
         self.todo_text = text
         self.is_point = is_point
         self.priority = priority
+        self.reminder = reminder
         self.has_notes = has_notes
         self.date_str = date_str
         self.file_path = file_path
@@ -72,7 +82,7 @@ class TodoItem(Static):
     def compose(self) -> ComposeResult:
         """Compose the todo item."""
         # Importance as a coloured tag in its own column, so the point's own
-        # text stands alone
+        # text stands alone; the reminder goes underneath, dimmed
         if self.priority is not None:
             tag = Text(f" {self.priority} ", style=Style(color="black", bgcolor=PRIORITY_COLORS[self.priority], bold=True))
         else:
@@ -80,6 +90,8 @@ class TodoItem(Static):
         marker = ("↻" if self.priority == DAILY else "☐") if self.is_point else "•"
         notes = " 📝" if self.has_notes else ""
         yield Label(Text.assemble(tag, f" {marker} ", self.todo_text, notes), classes="todo-text")
+        if self.reminder:
+            yield Label(f"⏰ {self.reminder}", classes="todo-reminder", markup=False)
 
     def _on_key(self, event: events.Key) -> None:
         """Handle key presses.
@@ -362,6 +374,7 @@ class TodoList(Container):
                         todos.append(dict(
                             text=point.text, date_str=filename, file_path=note_file,
                             line_number=line_number, is_point=True, priority=point.priority,
+                            reminder=point.reminder.describe() if point.reminder else None,
                             has_notes=notes_end(lines, line_number) > line_number + 1,
                         ))
             except Exception:

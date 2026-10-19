@@ -1,13 +1,17 @@
 """Parsing and formatting of checkbox points.
 
-A point is a markdown checkbox line, optionally with an importance marker:
+A point is a markdown checkbox line, optionally with an importance marker
+and a reminder:
 
-    - [ ] !0 call the supplier
-    - [x] !2 order brake pads
+    - [ ] !0 call the supplier @01.30
+    - [x] !2 order brake pads @13:00
 
 Importance runs from !0 (mega important) to !4 (not important at all).
 !5 marks a daily item: it can't be ticked off, so it carries over to every
 new day — for things to check each day.
+A reminder written with a dot (@01.30) repeats every 1 hour 30 minutes;
+one written with a colon (@13:00) fires every day at 13:00. Reminders stop
+once the point is checked.
 
 A point can carry notes, between a >> line and a << line right under it:
 
@@ -31,6 +35,7 @@ BULLET_RE = re.compile(r"^(?P<indent>\s*)[-*+] (?P<body>.*)$")
 PRIORITY_RE = re.compile(r"^!(?P<priority>[0-5])(?:\s+|$)")
 DAILY = 5
 """Importance level of daily items: never ticked off, carried to every day."""
+REMINDER_RE = re.compile(r"(?:^|\s+)@(?P<hours>\d{1,2})(?P<sep>[.:])(?P<minutes>\d{2})\s*$")
 
 PRIORITY_LABELS = {
     0: "mega important",
@@ -43,6 +48,52 @@ PRIORITY_LABELS = {
 
 
 @dataclass
+class Reminder:
+    """A reminder attached to a point."""
+
+    hours: int
+    minutes: int
+    daily: bool
+    """True for a clock time (13:00), False for a repeating interval (01.30)."""
+
+    @property
+    def spec(self) -> str:
+        sep = ":" if self.daily else "."
+        return f"{self.hours:02d}{sep}{self.minutes:02d}"
+
+    @property
+    def interval_seconds(self) -> int:
+        return (self.hours * 60 + self.minutes) * 60
+
+    def describe(self) -> str:
+        if self.daily:
+            return f"every day at {self.hours:02d}:{self.minutes:02d}"
+        parts = []
+        if self.hours:
+            parts.append(f"{self.hours}h")
+        if self.minutes:
+            parts.append(f"{self.minutes}m")
+        return "every " + " ".join(parts)
+
+
+def parse_reminder(spec: str) -> Optional[Reminder]:
+    """Parse a reminder spec like '01.30' or '13:00'. Returns None if invalid."""
+    match = re.fullmatch(r"\s*@?(\d{1,2})([.:])(\d{2})\s*", spec)
+    if not match:
+        return None
+    hours, sep, minutes = int(match.group(1)), match.group(2), int(match.group(3))
+    if minutes > 59:
+        return None
+    if sep == ":":
+        if hours > 23:
+            return None
+        return Reminder(hours, minutes, daily=True)
+    if hours == 0 and minutes == 0:
+        return None
+    return Reminder(hours, minutes, daily=False)
+
+
+@dataclass
 class Point:
     """A parsed checkbox line."""
 
@@ -50,6 +101,7 @@ class Point:
     checked: bool
     text: str
     priority: Optional[int] = None
+    reminder: Optional[Reminder] = None
     moved: bool = False
     """Carried over to a later day (- [>]); only that later copy counts."""
 
@@ -69,6 +121,8 @@ class Point:
             parts.append(f"!{self.priority}")
         if self.text:
             parts.append(self.text)
+        if self.reminder is not None:
+            parts.append(f"@{self.reminder.spec}")
         return f"{self.indent}- [{mark}] " + " ".join(parts)
 
 
@@ -85,11 +139,21 @@ def parse_point(line: str) -> Optional[Point]:
         priority = int(priority_match.group("priority"))
         body = body[priority_match.end():]
 
+    reminder = None
+    reminder_match = REMINDER_RE.search(body)
+    if reminder_match:
+        reminder = parse_reminder(
+            reminder_match.group("hours") + reminder_match.group("sep") + reminder_match.group("minutes")
+        )
+        if reminder is not None:
+            body = body[:reminder_match.start()]
+
     return Point(
         indent=match.group("indent"),
         checked=match.group("mark") in "xX",
         text=body.strip(),
         priority=priority,
+        reminder=reminder,
         moved=match.group("mark") == ">",
     )
 
@@ -109,7 +173,7 @@ def to_point(line: str) -> Point:
 def remove_checkbox(line: str) -> str:
     """Strip the checkbox from a point, keeping its text as a plain line.
 
-    Importance goes too, since it only means something on a point.
+    Importance and reminder go too, since they only mean something on a point.
     """
     point = parse_point(line)
     if point is None:
@@ -126,7 +190,7 @@ tell them apart."""
 def point_spans(line: str) -> list[tuple[int, int, str]]:
     """Character ranges of a point's parts, for colouring them in the editor.
 
-    Names: point.box, point.box.done, point.text.done, point.moved, priority.N.
+    Names: point.box, point.box.done, point.text.done, point.moved, priority.N, reminder.
     """
     match = POINT_RE.match(line)
     if not match:
@@ -144,13 +208,21 @@ def point_spans(line: str) -> list[tuple[int, int, str]]:
     body_end = len(line)
     body = line[body_start:]
     priority_match = PRIORITY_RE.match(body)
+    reminder_match = REMINDER_RE.search(body)
+    if reminder_match and parse_reminder(reminder_match.group().strip()) is None:
+        reminder_match = None
 
     text_start = body_start
     if priority_match:
         spans.append((body_start, body_start + 2, f"priority.{priority_match.group('priority')}"))
         text_start = body_start + priority_match.end()
-    if checked and body_end > text_start:
-        spans.append((text_start, body_end, "point.text.done"))
+    text_end = body_end
+    if reminder_match:
+        at = body_start + body.index("@", reminder_match.start())
+        spans.append((at, body_start + reminder_match.end(), "reminder"))
+        text_end = body_start + reminder_match.start()
+    if checked and text_end > text_start:
+        spans.append((text_start, text_end, "point.text.done"))
     return spans
 
 

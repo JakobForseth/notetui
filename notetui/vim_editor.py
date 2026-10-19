@@ -50,6 +50,7 @@ NOTE_THEME = TextAreaTheme(
         "point.box": Style(color="bright_black"),
         "point.box.done": Style(color="green"),
         "point.text.done": Style(color="bright_black", strike=True),
+        "reminder": Style(color="blue", italic=True),
         "point.moved": Style(color="bright_black", italic=True),
         "notes.marker": Style(color="bright_black"),
         "notes.text": Style(italic=True),
@@ -81,6 +82,13 @@ class VimTextArea(TextArea):
             """Set when a point was checked/unchecked, so earlier copies can follow."""
             self.checked = checked
 
+    class ReminderRequested(Message):
+        """Posted when the user asks to set a reminder on the current line."""
+
+        def __init__(self, row: int) -> None:
+            super().__init__()
+            self.row = row
+
     vim_mode: reactive[str] = reactive("NORMAL")
 
     def watch_vim_mode(self, new_mode: str) -> None:
@@ -101,7 +109,7 @@ class VimTextArea(TextArea):
         self._enter_normal_mode()
 
     def _build_highlight_map(self) -> None:
-        """Colour headings and the parts of each point (box, importance, notes).
+        """Colour headings and the parts of each point (box, importance, reminder, notes).
 
         There's no tree-sitter here, so this replaces the markdown highlighting
         TextArea would otherwise do. Highlight columns are UTF-8 byte offsets.
@@ -241,6 +249,8 @@ class VimTextArea(TextArea):
             self._toggle_point()
         elif key == "backspace":
             self._remove_checkbox()
+        elif character in ("t", "r"):  # t for time; r (reminder) still works
+            self.post_message(self.ReminderRequested(self.cursor_location[0]))
         elif character == "n":
             self._edit_notes()
         elif character == "s":
@@ -376,6 +386,12 @@ class VimTextArea(TextArea):
             description = f"Importance {priority}"
         self._replace_line(row, point.format())
         self.post_message(self.PointChanged(description))
+
+    def set_reminder(self, row: int, reminder) -> None:
+        """Set (or with None, clear) the reminder on a line, making it a point."""
+        point = to_point(self.document.get_line(row))
+        point.reminder = reminder
+        self._replace_line(row, point.format())
 
     def _move_to_first_non_whitespace(self) -> None:
         """Move cursor to first non-whitespace character on current line."""

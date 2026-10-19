@@ -1,9 +1,9 @@
 """Carry unfinished points over to today's note.
 
 Every open point (- [ ]) in an earlier day's note moves to today, together
-with its importance and notes block. The earlier day keeps the
+with its importance, reminder and notes block. The earlier day keeps the
 point marked as moved (- [>]) so its history stays readable, while only
-today's copy shows in the sidebar. Checked points stay
+today's copy shows in the sidebar and sends reminders. Checked points stay
 where they are.
 """
 

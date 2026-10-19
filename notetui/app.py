@@ -17,6 +17,8 @@ from notetui.calendar import Calendar
 from notetui.todolist import GroupHeading, NoteGroup, TodoList, TodoItem
 from notetui.search import SearchModalScreen
 from notetui.vim_editor import VimTextArea, darker_terminal_background
+from notetui.points import parse_point, parse_reminder
+from notetui.reminder_prompt import ReminderPromptScreen
 
 
 class NoteTUI(App):
@@ -298,7 +300,7 @@ class NoteTUI(App):
         self._update_info_bar()
 
     def on_vim_text_area_point_changed(self, event: VimTextArea.PointChanged) -> None:
-        """Save right away so the sidebar sees the change."""
+        """Save right away so the sidebar and the reminder service see the change."""
         self._save_current_note()
         self._content_dirty = False
         if event.toggled_text:
@@ -309,6 +311,25 @@ class NoteTUI(App):
             if synced and self.todo_list:
                 self.todo_list.scan_notes()
         self.notify(event.description)
+
+    def on_vim_text_area_reminder_requested(self, event: VimTextArea.ReminderRequested) -> None:
+        """Ask for a reminder for the line the cursor is on."""
+        if not self.editor:
+            return
+        row = event.row
+        point = parse_point(self.editor.document.get_line(row))
+        current = point.reminder.spec if point and point.reminder else ""
+
+        def handle_reminder(value: str | None) -> None:
+            if value is None or not self.editor:
+                return
+            reminder = parse_reminder(value) if value else None
+            self.editor.set_reminder(row, reminder)
+            self._save_current_note()
+            self._content_dirty = False
+            self.notify(f"⏰ Reminder {reminder.describe()}" if reminder else "Reminder removed")
+
+        self.push_screen(ReminderPromptScreen(current), handle_reminder)
 
     def _autosave(self) -> None:
         """Autosave if content has changed."""
@@ -470,8 +491,8 @@ class NoteTUI(App):
         """Tab / Shift+Tab: move between the days in the sidebar, never onto single todos.
 
         From the note, Tab goes to the first day and Shift+Tab to the last; past
-        either end it comes back to the note. Elsewhere (search, calendar)
-        Tab moves focus as usual.
+        either end it comes back to the note. Elsewhere (search, reminder
+        prompt) Tab moves focus as usual.
         """
         focused = self.focused
         if isinstance(focused, (GroupHeading, TodoItem)) and isinstance(focused.parent, NoteGroup):
@@ -554,6 +575,7 @@ class NoteTUI(App):
 - **Alt+Space** or **Backspace**: Remove the checkbox, keep the text
 - **p0** … **p4**: Importance (0 = mega important, 4 = not important); same again clears
 - **p5**: Daily item — never ticked off, comes back every day
+- **t** (or **r**): Time reminder (01.30 = every 1h30m, 13:00 = daily at 13:00)
 - **n**: Notes under the point (between >> and <<)
 - **s**: Sort points by importance (most important first, done ones last)
 

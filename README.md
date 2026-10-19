@@ -13,7 +13,7 @@ NoteTUI is a terminal-based note-taking application that lets you write daily no
 - **Fuzzy search** - Search across all notes with `Ctrl+F`
 - **Calendar view** - Visual navigation between dates
 - **Todo list** - Collects all `##` headings from your notes
-- **Points** - Checkbox points with importance, notes and carry-over to the next day
+- **Points** - Checkbox points with importance, notes, reminders and carry-over to the next day
 - **Keyboard-driven** - Fast navigation without mouse
 - **Norwegian language** - Dates and weekdays in Norwegian
 - **Auto-save** - Notes are saved automatically when navigating
@@ -154,11 +154,12 @@ Checkbox points live in the note itself, as markdown checkboxes. In NORMAL mode:
 | `Backspace` | Remove the checkbox, keep the text |
 | `p0` … `p4` | Set importance (0 = mega important, 4 = not important); the same number again clears it |
 | `p5` | Daily item: never ticked off, comes back every day |
+| `t` (or `r`) | Set a reminder: `01.30` = every 1h30m, `13:00` = every day at 13:00 (empty removes it) |
 | `n` | Write notes under the point (between `>>` and `<<` lines) |
 | `s` | Sort the points by importance (open ones first) |
 
 ```markdown
-- [ ] !0 call the supplier
+- [ ] !0 call the supplier @01.30
   >>
   ask about the brake pads
   <<
@@ -169,6 +170,23 @@ Open points show in the todo list, sorted by importance. When you open
 today's note, unfinished points from earlier days move to it; the earlier
 day keeps them marked as moved (`- [>]`), and ticking one off later also
 ticks off those earlier copies.
+
+### Reminders
+
+Reminders are sent by a small background service, `notetui-reminders`, so
+they keep coming while NoteTUI is closed. It checks `~/notes/` every 20
+seconds and sends a desktop notification (`notify-send`) with a sound
+(`pw-play`, PipeWire) for each due reminder on an open point. A reminder
+stops once its point is checked. Linux only for now.
+
+```bash
+# After installing with uv tool (puts notetui-reminders in ~/.local/bin):
+mkdir -p ~/.config/systemd/user
+cp systemd/notetui-reminders.service ~/.config/systemd/user/
+systemctl --user enable --now notetui-reminders
+
+notetui-reminders --demo   # hear the sound for each importance level
+```
 
 ## Search Feature
 
