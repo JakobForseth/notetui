@@ -380,10 +380,13 @@ class TodoList(Container):
             except Exception:
                 pass
 
-        # Within each note, most important first (unprioritised last). Notes stay
-        # newest first: the sort is stable and the date is the primary key.
+        # Within each note, most important first (unprioritised last), and new
+        # entries (appended at the bottom) before older ones. Notes stay newest
+        # first: the date is the primary key.
         dates = {t["date_str"]: i for i, t in reversed(list(enumerate(todos)))}
-        todos.sort(key=lambda t: (dates[t["date_str"]], 6 if t.get("priority") is None else t["priority"]))
+        todos.sort(key=lambda t: (dates[t["date_str"]],
+                                  6 if t.get("priority") is None else t["priority"],
+                                  -t["line_number"]))
         self.todos = todos
 
     def mark_todo_complete(self, todo_item: TodoItem) -> None:
