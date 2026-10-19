@@ -2,6 +2,7 @@
 
 from datetime import datetime
 from pathlib import Path
+import shutil
 
 import pyperclip
 
@@ -194,6 +195,11 @@ class NoteTUI(App):
         self.todo_list: TodoList | None = None
         self._previous_date: datetime | None = None
         self._content_dirty: bool = False
+        # The open note as last loaded/saved, and a disk version we already warned about
+        self._disk_text: str | None = None
+        self._warned_disk: str | None = None
+        # Fingerprint of all notes, so changes to other days refresh the todo list
+        self._notes_stamp: tuple = ()
         self.current_date = datetime.now()
         # Before anything loads: bring unfinished points from earlier days into today
         self._carried_on_start = carry_over(self.note_manager, self.current_date)
@@ -250,6 +256,7 @@ class NoteTUI(App):
         self.set_interval(60, self._autosave)
         # Pick up entries added from outside (e.g. with notetui-add)
         self._disk_text = self._read_disk()
+        self._notes_stamp = self._notes_dir_stamp()
         self.set_interval(1, self._check_external_change)
         # Move cursor to line 2 on startup
         if self.editor:
@@ -267,10 +274,10 @@ class NoteTUI(App):
 
     def watch_current_date(self, new_date: datetime) -> None:
         """React to date changes."""
-        if self.editor and self._previous_date:
-            # Save to the PREVIOUS date before loading new content
-            content = self.editor.text
-            self.note_manager.save_note_content(self._previous_date, content)
+        if self.editor and self._previous_date and self.editor.text != self._known_text(self._previous_date):
+            # Save unsaved edits to the PREVIOUS date before loading new content.
+            # Untouched notes aren't rewritten, so changes made outside survive.
+            self._write_note(self._previous_date, self.editor.text)
             # Refresh todo list after saving
             if self.todo_list:
                 self.todo_list.scan_notes()
@@ -364,9 +371,7 @@ class NoteTUI(App):
     def _save_current_note(self) -> None:
         """Save the current note content to the current date."""
         if self.editor:
-            content = self.editor.text
-            self.note_manager.save_note_content(self.current_date, content)
-            self._disk_text = content
+            self._write_note(self.current_date, self.editor.text)
             # Update the previous date tracker
             self._previous_date = self.current_date
             # Refresh todo list after saving
@@ -381,7 +386,55 @@ class NoteTUI(App):
         except OSError:
             return None
 
+    def _known_text(self, date: datetime) -> str:
+        """What the editor started from: the file as last seen, or the blank new-day note."""
+        if self._disk_text is not None:
+            return self._disk_text
+        return self.note_manager._create_default_content(date)
+
+    def _write_note(self, date: datetime, content: str) -> None:
+        """Write content to the note for date.
+
+        If the file changed on disk since it was loaded, the other version is
+        copied to .conflicts/ first so neither side's changes are lost.
+        """
+        path = self.note_manager.get_note_path(date)
+        try:
+            disk = path.read_text()
+        except OSError:
+            disk = None
+        if disk is not None and disk != self._disk_text and disk != content:
+            conflicts_dir = self.note_manager.notes_dir / ".conflicts"
+            conflicts_dir.mkdir(exist_ok=True)
+            backup = conflicts_dir / f"{path.stem}.{datetime.now():%H%M%S}.md"
+            shutil.copy2(path, backup)
+            self.notify(f"The version on disk was saved to {backup}", severity="warning", timeout=10)
+        self.note_manager.save_note_content(date, content)
+        self._disk_text = content
+        self._warned_disk = None
+
+    def _notes_dir_stamp(self) -> tuple:
+        """(name, mtime, size) of every note; changes when any note is added, removed or edited."""
+        stamp = []
+        for p in self.note_manager.notes_dir.glob("*.md"):
+            try:
+                st = p.stat()
+            except OSError:
+                continue
+            stamp.append((p.name, st.st_mtime_ns, st.st_size))
+        return tuple(sorted(stamp))
+
     def _check_external_change(self) -> None:
+        """Watch the notes folder: refresh todos when any note changes, and merge
+        changes to the open note."""
+        stamp = self._notes_dir_stamp()
+        if stamp != self._notes_stamp:
+            self._notes_stamp = stamp
+            if self.todo_list:
+                self.todo_list.scan_notes()
+        self._check_open_note()
+
+    def _check_open_note(self) -> None:
         """Merge in changes made to the open note's file by something else.
 
         notetui-add only ever appends, so the usual case is: the file is what
@@ -392,12 +445,11 @@ class NoteTUI(App):
         if not self.editor:
             return
         disk = self._read_disk()
-        if disk is None or disk == self._disk_text:
+        if disk is None or disk == self._disk_text or disk == self._warned_disk:
             return
         # What the editor started from: the file as last seen, or the blank
         # new-day note if the file didn't exist yet
-        known = self._disk_text if self._disk_text is not None else \
-            self.note_manager._create_default_content(self.current_date)
+        known = self._known_text(self.current_date)
         base = known.rstrip("\n")
         if self.editor.text == known:
             # Nothing unsaved: just load the new version
@@ -416,11 +468,12 @@ class NoteTUI(App):
         else:
             self.notify(
                 "This note changed on disk. Press Refresh to load it (your unsaved typing would be lost), "
-                "or save to keep your version.",
+                "or save to keep your version (the one on disk is then kept in .conflicts/).",
                 severity="warning",
                 timeout=8,
             )
-            self._disk_text = disk
+            # Keep _disk_text as it was, so saving knows to back this version up
+            self._warned_disk = disk
             return
         self._disk_text = disk
         if self.todo_list:
