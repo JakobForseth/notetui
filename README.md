@@ -16,6 +16,7 @@ NoteTUI is a terminal-based note-taking application that lets you write daily no
 - **Keyboard-driven** - Fast navigation without mouse
 - **Norwegian language** - Dates and weekdays in Norwegian
 - **Auto-save** - Notes are saved automatically when navigating
+- **Terminal colours** - Uses the terminal's own ANSI palette, so it matches your terminal
 
 ## Installation
 

@@ -66,39 +66,39 @@ class SearchModalScreen(ModalScreen):
     SearchModalScreen > #search-container {
         width: 80;
         height: 30;
-        background: #0d1117;
-        border: tall #00ffff;
+        background: ansi_default;
+        border: tall ansi_blue;
         padding: 1;
     }
 
     SearchModalScreen #search-title {
         text-align: center;
-        color: #00ffff;
+        color: ansi_blue;
         text-style: bold;
         padding-bottom: 1;
     }
 
     SearchModalScreen #search-input {
         width: 100%;
-        background: #1a1f2e;
-        border: tall #7b2cbf;
+        background: ansi_default;
+        border: tall ansi_bright_black;
         margin-bottom: 1;
     }
 
     SearchModalScreen #search-input:focus {
-        border: tall #00ffff;
+        border: tall ansi_blue;
     }
 
     SearchModalScreen #search-results {
         width: 100%;
         height: 1fr;
-        background: #0a0e14;
-        border: tall #7b2cbf;
+        background: ansi_default;
+        border: tall ansi_bright_black;
     }
 
     SearchModalScreen .search-hint {
         text-align: center;
-        color: #666;
+        color: ansi_bright_black;
         padding: 2;
     }
 
@@ -106,15 +106,15 @@ class SearchModalScreen(ModalScreen):
         width: 100%;
         height: auto;
         padding: 0 1;
-        background: #0d1117;
+        background: ansi_default;
     }
 
     SearchModalScreen SearchResultItem:focus {
-        background: #7b2cbf;
+        background: ansi_blue;
     }
 
     SearchModalScreen SearchResultItem:hover {
-        background: #1a1f2e;
+        background: ansi_bright_black;
     }
     """
 

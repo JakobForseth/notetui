@@ -15,58 +15,46 @@ from notetui.notes import NoteManager
 from notetui.calendar import Calendar
 from notetui.todolist import TodoList, TodoItem
 from notetui.search import SearchModalScreen
-from notetui.vim_editor import VimTextArea
+from notetui.vim_editor import VimTextArea, darker_terminal_background
 
 
 class NoteTUI(App):
     """A keyboard-driven TUI for daily markdown notes."""
 
+    # Colours use the terminal's own ANSI palette (see the ansi-dark theme set in
+    # __init__), so the app follows whatever theme the terminal is using.
     CSS = """
     Screen {
-        background: #0a0e14;
+        background: ansi_default;
     }
 
     Header {
-        background: #0d1117;
-        color: #00ffff;
-        text-style: bold;
-        border: tall #00d4ff;
-    }
-
-    Header .header--title {
-        color: #00ffff;
-        text-style: bold;
-    }
-
-    Header .header--subtitle {
-        color: #7b2cbf;
-    }
-
-    Header .header--clock {
-        color: #ff00ff;
-        background: #1a1f2e;
+        background: ansi_default;
+        color: ansi_blue;
         text-style: bold;
     }
 
     Footer {
-        background: #0d1117;
-        color: #00d4ff;
+        background: ansi_default;
     }
 
-    Footer > .footer--highlight {
-        background: #7b2cbf;
-        color: #ffffff;
+    Toast, Toast:ansi {
+        background: $toast-background;
     }
 
-    Footer > .footer--key {
-        background: #1a1f2e;
-        color: #00ffff;
+    FooterKey .footer-key--key {
+        color: ansi_blue;
+        background: ansi_default;
+    }
+
+    FooterKey .footer-key--description {
+        color: ansi_default;
+        background: ansi_default;
     }
 
     #main-container {
         width: 100%;
         height: 100%;
-        background: #0a0e14;
     }
 
     #split-container {
@@ -91,17 +79,15 @@ class NoteTUI(App):
     #info-bar {
         width: 100%;
         height: 3;
-        background: #1a1f2e;
         padding: 0 2;
-        color: #00ffff;
-        border: tall #00d4ff;
+        color: ansi_blue;
+        border: tall ansi_bright_black;
     }
 
     #calendar-container {
         width: 100%;
         height: 100%;
         display: none;
-        background: #0a0e14;
     }
 
     #calendar-container.show {
@@ -111,56 +97,46 @@ class NoteTUI(App):
     TextArea {
         width: 100%;
         height: 1fr;
-        background: #0d1117;
-        color: #e0e0e0;
-        border: tall #7b2cbf;
+        background: ansi_default;
+        color: ansi_default;
+        border: tall ansi_bright_black;
     }
 
     TextArea:focus {
-        border: tall #00ffff;
+        border: tall ansi_blue;
     }
 
     #status-text {
         text-align: left;
         content-align: left middle;
-        color: #00ffff;
+        color: ansi_blue;
         text-style: bold;
     }
 
     #file-path {
         text-align: right;
         content-align: right middle;
-        color: #7b2cbf;
+        color: ansi_bright_black;
     }
 
     #button-bar {
         width: 100%;
         height: auto;
         padding: 1;
-        background: #0d1117;
         align: center middle;
     }
 
     .action-button {
         margin: 0 1;
         min-width: 16;
-        background: #1a1f2e;
-        color: #00ffff;
-        border: tall #7b2cbf;
     }
 
-    .action-button:hover {
-        background: #7b2cbf;
-        color: #ffffff;
-    }
-
-    .action-button:focus {
-        border: tall #00ffff;
-    }
-
+    /* The buttons keep their original fixed colours (the terminal theme may
+       have no real green or blue) */
     #save-button {
         background: #1a472a;
         color: #00ff88;
+        border: tall #2d6a4f;
     }
 
     #save-button:hover {
@@ -170,6 +146,7 @@ class NoteTUI(App):
     #refresh-button {
         background: #1a3a5c;
         color: #00d4ff;
+        border: tall #2d5a8a;
     }
 
     #refresh-button:hover {
@@ -205,6 +182,7 @@ class NoteTUI(App):
             notes_dir: Directory to store notes. Defaults to ~/notes/
         """
         super().__init__()
+        self.theme = "ansi-dark"
         self.note_manager = NoteManager(notes_dir)
         self.editor: VimTextArea | None = None
         self.calendar_widget: Calendar | None = None
@@ -212,6 +190,14 @@ class NoteTUI(App):
         self._previous_date: datetime | None = None
         self._content_dirty: bool = False
         self.current_date = datetime.now()
+
+    def get_theme_variable_defaults(self) -> dict[str, str]:
+        """$note-background: the editor's darker shade, shared by the sidebar boxes.
+        $toast-background: darker still, so notifications stand out over both."""
+        return {
+            "note-background": darker_terminal_background() or "ansi_default",
+            "toast-background": darker_terminal_background(0.35) or "ansi_black",
+        }
 
     def compose(self) -> ComposeResult:
         """Compose the TUI layout."""
@@ -226,7 +212,6 @@ class NoteTUI(App):
                     yield VimTextArea(
                         self.note_manager.get_note_content(self.current_date),
                         language="markdown",
-                        theme="dracula",
                         show_line_numbers=True,
                     )
                     with Horizontal(id="button-bar"):

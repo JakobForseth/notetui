@@ -21,28 +21,26 @@ class TodoItem(Static):
         height: auto;
         padding: 1;
         margin: 0 0 1 0;
-        background: #1a1f2e;
-        border: round #7b2cbf;
-        color: #00d4ff;
+        background: $note-background;
+        border: round ansi_bright_black;
     }
 
     TodoItem:hover {
-        background: #252a3e;
-        border: round #00ffff;
+        border: round ansi_blue;
     }
 
     TodoItem:focus {
-        background: #7b2cbf;
-        border: heavy #00ffff;
+        background: ansi_blue;
+        color: ansi_black;
+        border: heavy ansi_bright_white;
     }
 
     TodoItem .todo-text {
-        color: #00ffff;
         text-style: bold;
     }
 
     TodoItem .todo-date {
-        color: #7b2cbf;
+        color: ansi_bright_black;
         text-style: italic;
     }
     """
@@ -98,27 +96,26 @@ class TodoList(Container):
     TodoList {
         width: 100%;
         height: 100%;
-        background: #0a0e14;
-        border-left: heavy #00ffff;
+        background: ansi_default;
+        border-left: heavy ansi_bright_black;
         padding: 1;
     }
 
     TodoList #todo-header {
         width: 100%;
         height: 3;
-        background: #1a1f2e;
-        color: #00ffff;
+        background: $note-background;
+        color: ansi_blue;
         text-align: center;
         text-style: bold;
-        border: tall #7b2cbf;
-        padding: 1;
+        border: tall ansi_bright_black;
         margin-bottom: 1;
     }
 
     TodoList VerticalScroll {
         width: 100%;
         height: 1fr;
-        background: #0d1117;
+        background: ansi_default;
     }
 
     TodoList VerticalScroll:focus {
@@ -128,7 +125,7 @@ class TodoList(Container):
     TodoList #empty-message {
         width: 100%;
         text-align: center;
-        color: #7b2cbf;
+        color: ansi_bright_black;
         padding: 2;
         text-style: italic;
     }

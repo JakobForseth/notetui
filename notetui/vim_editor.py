@@ -1,8 +1,42 @@
 """Vim-style modal editing for TextArea."""
 
+import dataclasses
+from pathlib import Path
+
+from rich.style import Style
 from textual.message import Message
 from textual.widgets import TextArea
+from textual.widgets.text_area import TextAreaTheme
 from textual.reactive import reactive
+
+# Ghostty's colours for the current Omarchy theme
+OMARCHY_GHOSTTY_THEME = Path.home() / ".local/state/omarchy/current/theme/ghostty.conf"
+
+
+def darker_terminal_background(factor: float = 0.65) -> str | None:
+    """The terminal's background colour, darkened, or None if it can't be found.
+
+    Read at startup, so it follows Omarchy theme changes the next time the app opens.
+    """
+    try:
+        for line in OMARCHY_GHOSTTY_THEME.read_text().splitlines():
+            key, _, value = line.partition("=")
+            value = value.strip()
+            if key.strip() == "background" and len(value) == 7 and value.startswith("#"):
+                rgb = [int(value[i:i + 2], 16) for i in (1, 3, 5)]
+                return "#" + "".join(f"{round(c * factor):02x}" for c in rgb)
+    except (OSError, ValueError):
+        pass
+    return None
+
+
+# Editor colours, as ANSI names so they follow the terminal
+NOTE_THEME = TextAreaTheme(
+    name="notetui",
+    syntax_styles={
+        "heading": Style(color="blue", bold=True),
+    },
+)
 
 
 class VimTextArea(TextArea):
@@ -24,7 +58,26 @@ class VimTextArea(TextArea):
     def on_mount(self) -> None:
         """Start in normal mode."""
         self._pending_key: str | None = None
+        # Slightly darker than the terminal so the note stands out. It has to be
+        # the theme's base style: TextArea resets its own background otherwise.
+        theme = NOTE_THEME
+        background = darker_terminal_background()
+        if background:
+            theme = dataclasses.replace(theme, base_style=Style(color="default", bgcolor=background))
+        self.register_theme(theme)
+        self.theme = theme.name
         self._enter_normal_mode()
+
+    def _build_highlight_map(self) -> None:
+        """Colour headings.
+
+        There's no tree-sitter here, so this replaces the markdown highlighting
+        TextArea would otherwise do.
+        """
+        super()._build_highlight_map()
+        for row, line in enumerate(self.text.split("\n")):
+            if line.startswith("#"):
+                self._highlights[row].append((0, None, "heading"))
 
     def _enter_normal_mode(self) -> None:
         """Switch to normal mode."""

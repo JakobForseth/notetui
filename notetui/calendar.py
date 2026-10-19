@@ -30,18 +30,18 @@ class Calendar(Container):
     Calendar {
         width: 100%;
         height: auto;
-        background: #0a0e14;
-        border: heavy #00ffff;
+        background: ansi_default;
+        border: heavy ansi_bright_black;
         padding: 1;
     }
 
     Calendar #month-year {
         text-align: center;
         width: 100%;
-        color: #00ffff;
+        color: ansi_blue;
         text-style: bold;
-        background: #1a1f2e;
-        border: tall #7b2cbf;
+        background: ansi_default;
+        border: tall ansi_bright_black;
         padding: 1;
     }
 
@@ -51,50 +51,50 @@ class Calendar(Container):
         width: 100%;
         height: auto;
         padding: 1;
-        background: #0d1117;
+        background: ansi_default;
     }
 
     Calendar .day-header {
         text-align: center;
-        color: #7b2cbf;
+        color: ansi_bright_black;
         text-style: bold;
-        background: #1a1f2e;
+        background: ansi_default;
     }
 
     Calendar .day-button {
         width: 100%;
         height: 3;
         min-width: 0;
-        border: round #1a1f2e;
-        background: #0d1117;
-        color: #00d4ff;
+        border: round ansi_bright_black;
+        background: ansi_default;
+        color: ansi_default;
     }
 
     Calendar .day-button:hover {
-        background: #1a1f2e;
-        color: #00ffff;
-        border: round #00d4ff;
+        background: ansi_default;
+        color: ansi_blue;
+        border: round ansi_blue;
     }
 
     Calendar .day-button:focus {
-        background: #7b2cbf;
-        color: #ffffff;
+        background: ansi_blue;
+        color: ansi_black;
         text-style: bold;
-        border: heavy #ff00ff;
+        border: heavy ansi_bright_white;
     }
 
     Calendar .day-button.today {
-        background: #00d4ff;
-        color: #0a0e14;
+        background: ansi_cyan;
+        color: ansi_black;
         text-style: bold;
-        border: round #00ffff;
+        border: round ansi_cyan;
     }
 
     Calendar .day-button.selected {
-        background: #00ffff;
-        color: #0a0e14;
+        background: ansi_green;
+        color: ansi_black;
         text-style: bold;
-        border: heavy #00d4ff;
+        border: heavy ansi_green;
     }
 
     Calendar .day-button.empty {
