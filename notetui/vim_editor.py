@@ -9,6 +9,18 @@ from textual.widgets import TextArea
 from textual.widgets.text_area import TextAreaTheme
 from textual.reactive import reactive
 
+from notetui.points import (
+    NOTES_CLOSE,
+    NOTES_OPEN,
+    PRIORITY_COLORS,
+    notes_end,
+    parse_point,
+    point_spans,
+    remove_checkbox,
+    sort_points,
+    to_point,
+)
+
 # Ghostty's colours for the current Omarchy theme
 OMARCHY_GHOSTTY_THEME = Path.home() / ".local/state/omarchy/current/theme/ghostty.conf"
 
@@ -35,6 +47,16 @@ NOTE_THEME = TextAreaTheme(
     name="notetui",
     syntax_styles={
         "heading": Style(color="blue", bold=True),
+        "point.box": Style(color="bright_black"),
+        "point.box.done": Style(color="green"),
+        "point.text.done": Style(color="bright_black", strike=True),
+        "point.moved": Style(color="bright_black", italic=True),
+        "notes.marker": Style(color="bright_black"),
+        "notes.text": Style(italic=True),
+        **{
+            f"priority.{level}": Style(color="black", bgcolor=color, bold=True)
+            for level, color in PRIORITY_COLORS.items()
+        },
     },
 )
 
@@ -48,6 +70,16 @@ class VimTextArea(TextArea):
         def __init__(self, mode: str) -> None:
             super().__init__()
             self.mode = mode
+
+    class PointChanged(Message):
+        """Posted after a point was toggled, prioritised, sorted or un-pointed."""
+
+        def __init__(self, description: str, toggled_text: str | None = None, checked: bool = False) -> None:
+            super().__init__()
+            self.description = description
+            self.toggled_text = toggled_text
+            """Set when a point was checked/unchecked, so earlier copies can follow."""
+            self.checked = checked
 
     vim_mode: reactive[str] = reactive("NORMAL")
 
@@ -69,15 +101,33 @@ class VimTextArea(TextArea):
         self._enter_normal_mode()
 
     def _build_highlight_map(self) -> None:
-        """Colour headings.
+        """Colour headings and the parts of each point (box, importance, notes).
 
         There's no tree-sitter here, so this replaces the markdown highlighting
-        TextArea would otherwise do.
+        TextArea would otherwise do. Highlight columns are UTF-8 byte offsets.
         """
         super()._build_highlight_map()
-        for row, line in enumerate(self.text.split("\n")):
+        highlights = self._highlights
+        lines = self.text.split("\n")
+        row = 0
+        while row < len(lines):
+            line = lines[row]
             if line.startswith("#"):
-                self._highlights[row].append((0, None, "heading"))
+                highlights[row].append((0, None, "heading"))
+                row += 1
+                continue
+            for start, end, name in point_spans(line):
+                highlights[row].append(
+                    (len(line[:start].encode()), len(line[:end].encode()), name)
+                )
+            end = notes_end(lines, row) if parse_point(line) else row + 1
+            if end > row + 1:
+                # The point's notes: faint >> and << lines, italic text between
+                highlights[row + 1].append((0, None, "notes.marker"))
+                for note_row in range(row + 2, end - 1):
+                    highlights[note_row].append((0, None, "notes.text"))
+                highlights[end - 1].append((0, None, "notes.marker"))
+            row = end
 
     def _enter_normal_mode(self) -> None:
         """Switch to normal mode."""
@@ -100,6 +150,14 @@ class VimTextArea(TextArea):
             self.read_only = False
             self.action_redo()
             self.read_only = True
+            return
+
+        # Alt+Space removes the checkbox (only reaches us on terminals that send it
+        # distinctly; most send plain Space, so Backspace does the same in NORMAL mode)
+        if key == "alt+space" and self.vim_mode == "NORMAL":
+            event.stop()
+            event.prevent_default()
+            self._remove_checkbox()
             return
 
         # Never intercept ctrl+ combos or tab — let them bubble to app bindings
@@ -178,11 +236,23 @@ class VimTextArea(TextArea):
         elif character == "G":
             self._move_to_bottom()
 
+        # Points
+        elif key == "space":
+            self._toggle_point()
+        elif key == "backspace":
+            self._remove_checkbox()
+        elif character == "n":
+            self._edit_notes()
+        elif character == "s":
+            self._sort_points()
+
         # Multi-key starters
         elif character == "g":
             self._pending_key = "g"
         elif character == "d":
             self._pending_key = "d"
+        elif character == "p":
+            self._pending_key = "p"
 
         # Editing
         elif character == "x":
@@ -203,6 +273,109 @@ class VimTextArea(TextArea):
             self.move_cursor((0, 0))
         elif pending == "d" and character == "d":
             self._delete_current_line()
+        elif pending == "p" and character is not None and character in "012345":
+            self._set_priority(int(character))
+
+    def _replace_line(self, row: int, new_line: str) -> None:
+        """Replace one line, keeping the cursor at the same spot in the text."""
+        old_line = self.document.get_line(row)
+        cursor_row, cursor_col = self.cursor_location
+        self.read_only = False
+        self.replace(new_line, (row, 0), (row, len(old_line)), maintain_selection_offset=False)
+        self.read_only = self.vim_mode == "NORMAL"
+        if cursor_row == row:
+            shift = len(new_line) - len(old_line)
+            self.move_cursor((row, max(0, min(len(new_line), cursor_col + shift))))
+        else:
+            self.move_cursor((cursor_row, cursor_col))
+
+    def _toggle_point(self) -> None:
+        """Space: make the line a point, or check/uncheck an existing point."""
+        row, _ = self.cursor_location
+        line = self.document.get_line(row)
+        point = parse_point(line)
+        if point is None:
+            point = to_point(line)
+            self._replace_line(row, point.format())
+            if not point.text:
+                # Empty line became an empty point: start typing its text
+                self.move_cursor((row, len(point.format())))
+                self._enter_insert_mode()
+                return
+            self.post_message(self.PointChanged("Point added"))
+        elif point.moved:
+            self.app.notify("This point moved on to a later day — tick it off there", severity="warning")
+        elif point.is_daily:
+            self.app.notify("↻ Daily item — it comes back every day, nothing to tick off")
+        else:
+            point.checked = not point.checked
+            self._replace_line(row, point.format())
+            self.post_message(self.PointChanged(
+                "✓ Done" if point.checked else "Unchecked", point.text, point.checked
+            ))
+
+    def _sort_points(self) -> None:
+        """s: sort the note's points by importance, most important first."""
+        lines = self.text.split("\n")
+        sorted_lines = sort_points(lines)
+        if sorted_lines == lines:
+            self.app.notify("Points are already sorted by importance")
+            return
+        row, column = self.cursor_location
+        current = lines[row]
+        self.read_only = False
+        self.replace("\n".join(sorted_lines), (0, 0), self.document.end)
+        self.read_only = True
+        # Keep the cursor on the line it was on
+        new_row = sorted_lines.index(current) if current in sorted_lines else row
+        self.move_cursor((new_row, min(column, len(current))))
+        self.post_message(self.PointChanged("Sorted by importance"))
+
+    def _edit_notes(self) -> None:
+        """n: start typing notes under the point (adds a >> << block if there isn't one)."""
+        row, _ = self.cursor_location
+        line = self.document.get_line(row)
+        if parse_point(line) is None:
+            self._replace_line(row, to_point(line).format())
+            line = self.document.get_line(row)
+        point = parse_point(line)
+        indent = point.indent + "  "
+        lines = self.text.split("\n")
+        end = notes_end(lines, row)
+        self.read_only = False
+        if end == row + 1:
+            self.insert(f"\n{indent}{NOTES_OPEN}\n{indent}\n{indent}{NOTES_CLOSE}", (row, len(line)))
+            self.move_cursor((row + 2, len(indent)))
+        else:
+            # Already has notes: continue after the last one, or on an empty last line
+            last = end - 2
+            if lines[last].strip() and lines[last].strip() != NOTES_OPEN:
+                self.insert(f"{indent}\n", (end - 1, 0))
+                last = end - 1
+            self.move_cursor((last, len(self.document.get_line(last))))
+        self._enter_insert_mode()
+
+    def _remove_checkbox(self) -> None:
+        """Alt+Space / Backspace: turn a point back into a plain line."""
+        row, _ = self.cursor_location
+        line = self.document.get_line(row)
+        if parse_point(line) is None:
+            return
+        self._replace_line(row, remove_checkbox(line))
+        self.post_message(self.PointChanged("Checkbox removed"))
+
+    def _set_priority(self, priority: int) -> None:
+        """p0–p4: set importance; the same number again clears it."""
+        row, _ = self.cursor_location
+        point = to_point(self.document.get_line(row))
+        if point.priority == priority:
+            point.priority = None
+            description = "Importance cleared"
+        else:
+            point.priority = priority
+            description = f"Importance {priority}"
+        self._replace_line(row, point.format())
+        self.post_message(self.PointChanged(description))
 
     def _move_to_first_non_whitespace(self) -> None:
         """Move cursor to first non-whitespace character on current line."""

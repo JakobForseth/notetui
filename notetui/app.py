@@ -12,6 +12,7 @@ from textual.widgets import Footer, Header, TextArea, Label, Static, Button
 from textual.reactive import reactive
 
 from notetui.notes import NoteManager
+from notetui.carryover import carry_over, sync_earlier_copies
 from notetui.calendar import Calendar
 from notetui.todolist import GroupHeading, NoteGroup, TodoList, TodoItem
 from notetui.search import SearchModalScreen
@@ -192,6 +193,8 @@ class NoteTUI(App):
         self._previous_date: datetime | None = None
         self._content_dirty: bool = False
         self.current_date = datetime.now()
+        # Before anything loads: bring unfinished points from earlier days into today
+        self._carried_on_start = carry_over(self.note_manager, self.current_date)
 
     def get_theme_variable_defaults(self) -> dict[str, str]:
         """$note-background: the editor's darker shade, shared by the sidebar boxes.
@@ -251,6 +254,11 @@ class NoteTUI(App):
             self.todo_list.scan_notes()
         # Update info bar to show vim mode
         self._update_info_bar()
+        self._notify_carried(self._carried_on_start)
+
+    def _notify_carried(self, count: int) -> None:
+        if count:
+            self.notify(f"↪ Carried over {count} unfinished point{'s' if count != 1 else ''}")
 
     def watch_current_date(self, new_date: datetime) -> None:
         """React to date changes."""
@@ -261,6 +269,13 @@ class NoteTUI(App):
             # Refresh todo list after saving
             if self.todo_list:
                 self.todo_list.scan_notes()
+
+        # Arriving at today (e.g. after midnight): carry unfinished points over first
+        if new_date.date() == datetime.now().date():
+            carried = carry_over(self.note_manager, new_date)
+            if carried and self.todo_list:
+                self.todo_list.scan_notes()
+            self._notify_carried(carried)
 
         # Load the new date's content
         if self.editor:
@@ -281,6 +296,19 @@ class NoteTUI(App):
     def on_vim_text_area_mode_changed(self, event) -> None:
         """Update status bar when vim mode changes."""
         self._update_info_bar()
+
+    def on_vim_text_area_point_changed(self, event: VimTextArea.PointChanged) -> None:
+        """Save right away so the sidebar sees the change."""
+        self._save_current_note()
+        self._content_dirty = False
+        if event.toggled_text:
+            # A carried-over point: tick off (or un-tick) its copies on earlier days
+            synced = sync_earlier_copies(
+                self.note_manager.notes_dir, self.current_date, event.toggled_text, event.checked
+            )
+            if synced and self.todo_list:
+                self.todo_list.scan_notes()
+        self.notify(event.description)
 
     def _autosave(self) -> None:
         """Autosave if content has changed."""
@@ -521,6 +549,16 @@ class NoteTUI(App):
 - **Ctrl+K**: Toggle calendar view
 - **Escape**: Close search/calendar
 
+## Points (NORMAL mode)
+- **Space**: Make line a checkbox point / check / uncheck
+- **Alt+Space** or **Backspace**: Remove the checkbox, keep the text
+- **p0** … **p4**: Importance (0 = mega important, 4 = not important); same again clears
+- **p5**: Daily item — never ticked off, comes back every day
+- **n**: Notes under the point (between >> and <<)
+- **s**: Sort points by importance (most important first, done ones last)
+
+Unfinished points move to today when you open it; the old day keeps them as - [>]
+
 ## Editing
 - **Ctrl+S**: Save current note
 - **Ctrl+C**: Copy selected text
@@ -528,7 +566,7 @@ class NoteTUI(App):
 
 ## Todo sidebar
 - **Tab**: Jump into the sidebar
-- **Space** on a date: Fold / unfold that note's todos
+- **Space** on a date: Fold / unfold that note's todos and points
 - **Enter** on a date: Open that day
 - **←** / **→** on a date: Fold / unfold
 - **Ctrl+O**: Fold / unfold all notes

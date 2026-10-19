@@ -13,6 +13,12 @@ import json
 import os
 import re
 
+from rich.style import Style
+from rich.text import Text
+
+from notetui.carryover import sync_earlier_copies
+from notetui.points import DAILY, PRIORITY_COLORS, notes_end, parse_point
+
 
 class TodoItem(Static):
     """A single todo item."""
@@ -42,7 +48,8 @@ class TodoItem(Static):
             self.date_str = date_str
             super().__init__()
 
-    def __init__(self, text: str, date_str: str, file_path: Path, line_number: int, **kwargs):
+    def __init__(self, text: str, date_str: str, file_path: Path, line_number: int,
+                 is_point: bool = False, priority: int | None = None, has_notes: bool = False, **kwargs):
         """Initialize a todo item.
 
         Args:
@@ -51,15 +58,28 @@ class TodoItem(Static):
             file_path: Path to the note file
             line_number: Line number of the todo in the file
         """
+        if priority is not None:
+            kwargs["classes"] = f"priority-{priority}"
         super().__init__(**kwargs)
         self.todo_text = text
+        self.is_point = is_point
+        self.priority = priority
+        self.has_notes = has_notes
         self.date_str = date_str
         self.file_path = file_path
         self.line_number = line_number
 
     def compose(self) -> ComposeResult:
         """Compose the todo item."""
-        yield Label(f"• {self.todo_text}", classes="todo-text", markup=False)
+        # Importance as a coloured tag in its own column, so the point's own
+        # text stands alone
+        if self.priority is not None:
+            tag = Text(f" {self.priority} ", style=Style(color="black", bgcolor=PRIORITY_COLORS[self.priority], bold=True))
+        else:
+            tag = Text("   ")
+        marker = ("↻" if self.priority == DAILY else "☐") if self.is_point else "•"
+        notes = " 📝" if self.has_notes else ""
+        yield Label(Text.assemble(tag, f" {marker} ", self.todo_text, notes), classes="todo-text")
 
     def _on_key(self, event: events.Key) -> None:
         """Handle key presses.
@@ -293,7 +313,7 @@ class TodoList(Container):
                     yield NoteGroup(date_str, todos, date_str in self.collapsed)
 
     def scan_notes(self) -> None:
-        """Scan all note files for ## headings."""
+        """Scan all note files for ## headings and unchecked points."""
         todos = []
 
         if not self.notes_dir.exists():
@@ -335,8 +355,22 @@ class TodoList(Container):
                         if todo_text:
                             todos.append(dict(text=todo_text, date_str=filename,
                                               file_path=note_file, line_number=line_number))
+                        continue
+
+                    point = parse_point(line)
+                    if point and point.is_open and point.text:
+                        todos.append(dict(
+                            text=point.text, date_str=filename, file_path=note_file,
+                            line_number=line_number, is_point=True, priority=point.priority,
+                            has_notes=notes_end(lines, line_number) > line_number + 1,
+                        ))
             except Exception:
                 pass
+
+        # Within each note, most important first (unprioritised last). Notes stay
+        # newest first: the sort is stable and the date is the primary key.
+        dates = {t["date_str"]: i for i, t in reversed(list(enumerate(todos)))}
+        todos.sort(key=lambda t: (dates[t["date_str"]], 6 if t.get("priority") is None else t["priority"]))
         self.todos = todos
 
     def mark_todo_complete(self, todo_item: TodoItem) -> None:
@@ -362,6 +396,24 @@ class TodoList(Container):
                         target_line_idx = idx
                         break
 
+            if todo_item.is_point:
+                target_line_idx = None
+                for idx, line in enumerate(lines):
+                    point = parse_point(line)
+                    if point and point.is_open and point.text == todo_item.todo_text:
+                        point.checked = True
+                        lines[idx] = point.format()
+                        target_line_idx = idx
+                        break
+                if target_line_idx is not None:
+                    todo_item.file_path.write_text('\n'.join(lines))
+                    self.post_message(self.TodoFileUpdated(todo_item.file_path))
+                    # A carried-over point: tick off its copies on earlier days too
+                    day = datetime.strptime(todo_item.date_str, "%d-%b-%Y")
+                    for synced in sync_earlier_copies(self.notes_dir, day, todo_item.todo_text, True):
+                        self.post_message(self.TodoFileUpdated(synced))
+                target_line_idx = None
+
             if target_line_idx is not None:
                 line = lines[target_line_idx]
                 # Get the indentation
@@ -385,6 +437,9 @@ class TodoList(Container):
         # Get the currently focused widget
         focused = self.screen.focused
         if focused and isinstance(focused, TodoItem):
+            if focused.is_point and focused.priority == DAILY:
+                self.app.notify("↻ Daily item — it comes back every day, nothing to tick off")
+                return
             self.mark_todo_complete(focused)
 
     def on_group_heading_toggled(self, message: GroupHeading.Toggled) -> None:

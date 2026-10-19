@@ -13,6 +13,7 @@ NoteTUI is a terminal-based note-taking application that lets you write daily no
 - **Fuzzy search** - Search across all notes with `Ctrl+F`
 - **Calendar view** - Visual navigation between dates
 - **Todo list** - Collects all `##` headings from your notes
+- **Points** - Checkbox points with importance, notes and carry-over to the next day
 - **Keyboard-driven** - Fast navigation without mouse
 - **Norwegian language** - Dates and weekdays in Norwegian
 - **Auto-save** - Notes are saved automatically when navigating
@@ -142,6 +143,32 @@ between runs (in `~/.local/state/notetui/collapsed.json`).
 - Press `↑` / `↓` to move between days, `Shift+↑` / `Shift+↓` between a day's todos
 - Press `Enter` to jump to the date for a todo
 - Press `Ctrl+D` to mark a todo as done (adds ~~strikethrough~~)
+
+## Points
+
+Checkbox points live in the note itself, as markdown checkboxes. In NORMAL mode:
+
+| Key | Action |
+|-----|--------|
+| `Space` | Make the line a point / check / uncheck it |
+| `Backspace` | Remove the checkbox, keep the text |
+| `p0` … `p4` | Set importance (0 = mega important, 4 = not important); the same number again clears it |
+| `p5` | Daily item: never ticked off, comes back every day |
+| `n` | Write notes under the point (between `>>` and `<<` lines) |
+| `s` | Sort the points by importance (open ones first) |
+
+```markdown
+- [ ] !0 call the supplier
+  >>
+  ask about the brake pads
+  <<
+- [x] !2 order brake pads
+```
+
+Open points show in the todo list, sorted by importance. When you open
+today's note, unfinished points from earlier days move to it; the earlier
+day keeps them marked as moved (`- [>]`), and ticking one off later also
+ticks off those earlier copies.
 
 ## Search Feature
 
