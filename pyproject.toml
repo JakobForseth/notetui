@@ -12,6 +12,7 @@ dependencies = [
 [project.scripts]
 notetui = "notetui.app:main"
 notetui-reminders = "notetui.reminders:main"
+notetui-add = "notetui.add:main"
 
 [build-system]
 requires = ["hatchling"]

@@ -188,6 +188,21 @@ systemctl --user enable --now notetui-reminders
 notetui-reminders --demo   # hear the sound for each importance level
 ```
 
+### Adding from the command line
+
+`notetui-add` appends a point or a line of text to the end of today's note.
+A running NoteTUI picks it up within a second, without losing unsaved typing.
+
+```bash
+notetui-add "p0: call the supplier, r 13:00, n ask about the brake pads"
+notetui-add "just a line of text"
+notetui-add --point "order brake pads" --importance 2 --reminder 01.30
+```
+
+Comma-separated parts, in any order: `p` / `p0`…`p5` (a point, with
+importance), `r` / `t` (reminder), `n` (notes under the point); anything
+else is plain text. `NOTETUI_NOTES_DIR` overrides `~/notes/`.
+
 ## Search Feature
 
 Press `Ctrl+F` to open the fuzzy search modal:

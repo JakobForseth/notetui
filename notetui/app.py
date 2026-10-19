@@ -248,6 +248,9 @@ class NoteTUI(App):
         self._previous_date = self.current_date
         # Start autosave timer (every 60 seconds)
         self.set_interval(60, self._autosave)
+        # Pick up entries added from outside (e.g. with notetui-add)
+        self._disk_text = self._read_disk()
+        self.set_interval(1, self._check_external_change)
         # Move cursor to line 2 on startup
         if self.editor:
             self.editor.move_cursor((1, 0))
@@ -282,6 +285,7 @@ class NoteTUI(App):
         # Load the new date's content
         if self.editor:
             self.editor.text = self.note_manager.get_note_content(new_date)
+            self._disk_text = self._read_disk()
             self._update_info_bar()
             # Move cursor to line 2 (index 1, column 0)
             self.editor.move_cursor((1, 0))
@@ -362,11 +366,66 @@ class NoteTUI(App):
         if self.editor:
             content = self.editor.text
             self.note_manager.save_note_content(self.current_date, content)
+            self._disk_text = content
             # Update the previous date tracker
             self._previous_date = self.current_date
             # Refresh todo list after saving
             if self.todo_list:
                 self.todo_list.scan_notes()
+
+    def _read_disk(self) -> str | None:
+        """The current note's file as it is on disk, or None if it doesn't exist yet."""
+        path = self.note_manager.get_note_path(self.current_date)
+        try:
+            return path.read_text()
+        except OSError:
+            return None
+
+    def _check_external_change(self) -> None:
+        """Merge in changes made to the open note's file by something else.
+
+        notetui-add only ever appends, so the usual case is: the file is what
+        we last loaded or saved, plus new lines at the end. Those get added to
+        the editor even while you're typing. Anything else is only reloaded
+        when there's no unsaved typing to lose.
+        """
+        if not self.editor:
+            return
+        disk = self._read_disk()
+        if disk is None or disk == self._disk_text:
+            return
+        # What the editor started from: the file as last seen, or the blank
+        # new-day note if the file didn't exist yet
+        known = self._disk_text if self._disk_text is not None else \
+            self.note_manager._create_default_content(self.current_date)
+        base = known.rstrip("\n")
+        if self.editor.text == known:
+            # Nothing unsaved: just load the new version
+            cursor = self.editor.cursor_location
+            self.editor.text = disk
+            lines = disk.split("\n")
+            row = min(cursor[0], len(lines) - 1)
+            self.editor.move_cursor((row, min(cursor[1], len(lines[row]))))
+        elif disk.startswith(base):
+            # Unsaved typing, but the file only grew at the end: add that part
+            content = self.editor.text.rstrip("\n").split("\n")
+            end = (len(content) - 1, len(content[-1]))
+            self.editor.read_only = False
+            self.editor.replace(disk[len(base):], end, self.editor.document.end)
+            self.editor.read_only = self.editor.vim_mode == "NORMAL"
+        else:
+            self.notify(
+                "This note changed on disk. Press Refresh to load it (your unsaved typing would be lost), "
+                "or save to keep your version.",
+                severity="warning",
+                timeout=8,
+            )
+            self._disk_text = disk
+            return
+        self._disk_text = disk
+        if self.todo_list:
+            self.todo_list.scan_notes()
+        self.notify("Note updated from outside")
 
     def _update_info_bar(self) -> None:
         """Update the information bar."""
@@ -399,6 +458,7 @@ class NoteTUI(App):
         """Refresh the current note from disk."""
         if self.editor:
             self.editor.text = self.note_manager.get_note_content(self.current_date)
+            self._disk_text = self._read_disk()
             self._update_info_bar()
             if self.todo_list:
                 self.todo_list.scan_notes()
@@ -641,6 +701,7 @@ Format: DD-MMM-YYYY.md (e.g., 21-Nov-2025.md)
             cursor_pos = self.editor.cursor_location
             # Reload the file content
             self.editor.text = self.note_manager.get_note_content(self.current_date)
+            self._disk_text = self._read_disk()
             # Restore cursor position
             self.editor.move_cursor(cursor_pos)
 
