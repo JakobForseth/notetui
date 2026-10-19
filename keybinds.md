@@ -17,7 +17,7 @@
 | `j`/`k` | Down / Up | `$` | End of line |
 | `w` | Next word | `gg` | Top of file |
 | `b` | Previous word | `G` | Bottom of file |
-| `e` | End of word | `Tab` | Focus todo list |
+| `e` | End of word | `Tab` | Next day in todo list |
 
 ## Editing (NORMAL)
 

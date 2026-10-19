@@ -92,7 +92,8 @@ Then open http://localhost:8000 in your browser.
 |-----|--------|
 | `Ctrl+F` | Search all notes |
 | `Ctrl+K` | Show/hide calendar |
-| `Tab` | Focus todo list |
+| `Tab` / `Shift+Tab` | Next / previous day in the todo list (back to the note past the end) |
+| `Ctrl+O` | Fold / unfold all days in the todo list |
 | `Escape` | Close search/calendar |
 
 ### Editing
@@ -133,7 +134,12 @@ Get milk and bread
 ## Call the doctor
 ```
 
-- Press `Tab` to focus the todo list
+Todos are grouped in one box per day, newest first. Folded days are remembered
+between runs (in `~/.local/state/notetui/collapsed.json`).
+
+- Press `Tab` / `Shift+Tab` to move between days (and back to the note)
+- Press `Space` (or `←` / `→`) on a day to fold / unfold it, `Ctrl+O` for all days
+- Press `↑` / `↓` to move between days, `Shift+↑` / `Shift+↓` between a day's todos
 - Press `Enter` to jump to the date for a todo
 - Press `Ctrl+D` to mark a todo as done (adds ~~strikethrough~~)
 

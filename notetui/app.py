@@ -13,7 +13,7 @@ from textual.reactive import reactive
 
 from notetui.notes import NoteManager
 from notetui.calendar import Calendar
-from notetui.todolist import TodoList, TodoItem
+from notetui.todolist import GroupHeading, NoteGroup, TodoList, TodoItem
 from notetui.search import SearchModalScreen
 from notetui.vim_editor import VimTextArea, darker_terminal_background
 
@@ -167,8 +167,10 @@ class NoteTUI(App):
         Binding("ctrl+c", "copy_selection", "Copy", priority=True),
         Binding("ctrl+v", "paste", "Paste", priority=True),
         Binding("ctrl+h", "show_help", "Help", priority=True),
+        Binding("ctrl+o", "toggle_fold_all", "Fold Todos", priority=True),
         Binding("ctrl+enter", "finish_todo_on_line", "Finish Todo", show=False),
-        Binding("tab", "focus_todos", "Focus Todos", show=False),
+        Binding("tab", "tab_day(1)", "Next Day Box", show=False, priority=True),
+        Binding("shift+tab", "tab_day(-1)", "Previous Day Box", show=False, priority=True),
         Binding("escape", "escape", "Back", show=False),
     ]
 
@@ -431,17 +433,29 @@ class NoteTUI(App):
             if self.editor:
                 self.editor.focus()
 
-    def action_focus_todos(self) -> None:
-        """Focus the todo list."""
+    def action_toggle_fold_all(self) -> None:
+        """Fold or unfold every note's group in the todo sidebar."""
         if self.todo_list:
-            # Try to focus the first todo item
-            todo_items = list(self.todo_list.query("TodoItem").results())
-            if todo_items:
-                # Focus the first focusable todo item
-                for item in todo_items:
-                    if item.can_focus:
-                        item.focus()
-                        break
+            self.todo_list.toggle_all()
+
+    def action_tab_day(self, step: int) -> None:
+        """Tab / Shift+Tab: move between the days in the sidebar, never onto single todos.
+
+        From the note, Tab goes to the first day and Shift+Tab to the last; past
+        either end it comes back to the note. Elsewhere (search, calendar)
+        Tab moves focus as usual.
+        """
+        focused = self.focused
+        if isinstance(focused, (GroupHeading, TodoItem)) and isinstance(focused.parent, NoteGroup):
+            focused.parent.tab_day(step)
+        elif focused is self.editor and self.todo_list:
+            headings = list(self.todo_list.query(GroupHeading).results())
+            if headings:
+                headings[0 if step > 0 else -1].focus()
+        elif step > 0:
+            self.screen.focus_next()
+        else:
+            self.screen.focus_previous()
 
     def action_finish_todo_on_line(self) -> None:
         """Finish the todo on the current cursor line by adding strikethrough."""
@@ -511,6 +525,16 @@ class NoteTUI(App):
 - **Ctrl+S**: Save current note
 - **Ctrl+C**: Copy selected text
 - **Ctrl+V**: Paste from clipboard
+
+## Todo sidebar
+- **Tab**: Jump into the sidebar
+- **Space** on a date: Fold / unfold that note's todos
+- **Enter** on a date: Open that day
+- **←** / **→** on a date: Fold / unfold
+- **Ctrl+O**: Fold / unfold all notes
+- **↑** / **↓**: Previous / next day, **Shift+↑** / **Shift+↓**: Between that day's todos
+- **Enter** on a todo: Open that day
+- **Ctrl+D** on a todo: Mark it done
 
 ## Other
 - **Ctrl+H**: Show this help
