@@ -732,14 +732,16 @@ Format: DD-MMM-YYYY.md (e.g., 21-Nov-2025.md)
         self.notify(f"Selected: {message.date.strftime('%d %b %Y')}")
 
     def on_todo_item_selected(self, message: TodoItem.Selected) -> None:
-        """Handle todo item selection - jump to that date."""
+        """Handle todo item selection - jump to that date, and to the todo's line."""
         # Parse the date string (format: "DD-MMM-YYYY")
         try:
             selected_date = datetime.strptime(message.date_str, "%d-%b-%Y")
             self.current_date = selected_date
-            # Return focus to editor and position cursor on line 2
+            # Return focus to editor, on the todo's line (or line 2 for a day heading)
             if self.editor:
-                self.editor.move_cursor((1, 0))
+                row = 1 if message.line_number is None else message.line_number
+                row = min(row, self.editor.document.line_count - 1)
+                self.editor.move_cursor((row, 0), center=True)
                 self.editor.focus()
             self.notify(f"Jumped to: {selected_date.strftime('%d %b %Y')}")
         except ValueError:

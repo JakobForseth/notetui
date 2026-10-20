@@ -51,9 +51,13 @@ class TodoItem(Static):
     can_focus = True
 
     class Selected(Message):
-        """Message sent when a todo is selected with Enter."""
-        def __init__(self, date_str: str) -> None:
+        """Message sent when a todo (Enter/double-click) or a day heading is selected.
+
+        line_number is the todo's line in the note, or None for the day itself.
+        """
+        def __init__(self, date_str: str, line_number: int | None = None) -> None:
             self.date_str = date_str
+            self.line_number = line_number
             super().__init__()
 
     def __init__(self, text: str, date_str: str, file_path: Path, line_number: int,
@@ -93,6 +97,12 @@ class TodoItem(Static):
         if self.reminder:
             yield Label(f"⏰ {self.reminder}", classes="todo-reminder", markup=False)
 
+    def _on_click(self, event: events.Click) -> None:
+        """Double-click jumps to the todo in the editor, like Enter."""
+        if event.chain >= 2:
+            event.stop()
+            self.post_message(self.Selected(self.date_str, self.line_number))
+
     def _on_key(self, event: events.Key) -> None:
         """Handle key presses.
 
@@ -101,7 +111,7 @@ class TodoItem(Static):
         """
         group = self.parent
         if event.key == "enter":
-            self.post_message(self.Selected(self.date_str))
+            self.post_message(self.Selected(self.date_str, self.line_number))
         elif event.key in ("up", "down") and isinstance(group, NoteGroup):
             event.stop()
             group.focus_neighbour_day(-1 if event.key == "up" else 1)
