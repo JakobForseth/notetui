@@ -17,6 +17,7 @@ from rich.style import Style
 from rich.text import Text
 
 from notetui.carryover import sync_earlier_copies
+from notetui.links import ISSUE_KEY, issue_url
 from notetui.points import DAILY, PRIORITY_COLORS, notes_end, parse_point
 
 
@@ -93,15 +94,50 @@ class TodoItem(Static):
             tag = Text("   ")
         marker = ("↻" if self.priority == DAILY else "☐") if self.is_point else "•"
         notes = " 📝" if self.has_notes else ""
-        yield Label(Text.assemble(tag, f" {marker} ", self.todo_text, notes), classes="todo-text")
+        # Issue keys look like links and carry their key, so a double-click on
+        # one can open it instead of jumping to the note
+        text = Text(self.todo_text)
+        for match in ISSUE_KEY.finditer(self.todo_text):
+            text.stylize(Style(color="cyan", underline=True, meta={"issue": match.group()}),
+                         match.start(), match.end())
+        yield Label(Text.assemble(tag, f" {marker} ", text, notes), classes="todo-text")
         if self.reminder:
             yield Label(f"⏰ {self.reminder}", classes="todo-reminder", markup=False)
 
     def _on_click(self, event: events.Click) -> None:
-        """Double-click jumps to the todo in the editor, like Enter."""
+        """Double-click jumps to the todo in the editor, like Enter, or opens the issue key under the mouse."""
         if event.chain >= 2:
             event.stop()
-            self.post_message(self.Selected(self.date_str, self.line_number))
+            key = event.style.meta.get("issue")
+            if key:
+                self.app.open_url(issue_url(key))
+            else:
+                self.post_message(self.Selected(self.date_str, self.line_number))
+
+    def clipboard_text(self) -> str:
+        """The todo with everything written under it, and where it's from, for pasting elsewhere.
+
+        A ## todo takes the lines up to the next heading; a point takes its notes block.
+        """
+        try:
+            lines = self.file_path.read_text().split("\n")
+        except OSError:
+            lines = []
+        row = self.line_number
+        if not (row < len(lines) and self.todo_text in lines[row]):
+            # The file changed since the list was built: find the todo again
+            row = next((i for i, line in enumerate(lines) if self.todo_text in line), None)
+        if row is None:
+            body = [self.todo_text]
+        elif self.is_point:
+            body = lines[row:notes_end(lines, row)]
+        else:
+            end = next((i for i in range(row + 1, len(lines)) if lines[i].lstrip().startswith("#")), len(lines))
+            body = lines[row:end]
+        while body and not body[-1].strip():
+            body.pop()
+        where = f"{self.file_path}" + (f", linje {row + 1}" if row is not None else "")
+        return f"Fra notetui ({where}):\n" + "\n".join(body)
 
     def _on_key(self, event: events.Key) -> None:
         """Handle key presses.

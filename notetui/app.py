@@ -554,8 +554,11 @@ class NoteTUI(App):
         self.show_calendar = not self.show_calendar
 
     def action_copy_selection(self) -> None:
-        """Copy selected text to clipboard."""
-        if self.editor and self.editor.selected_text:
+        """Copy the selected text, or the whole todo when one is focused in the list."""
+        if isinstance(self.focused, TodoItem):
+            pyperclip.copy(self.focused.clipboard_text())
+            self.notify("Copied todo to clipboard")
+        elif self.editor and self.editor.selected_text:
             pyperclip.copy(self.editor.selected_text)
             self.notify("Copied to clipboard")
         else:
@@ -698,6 +701,7 @@ Unfinished points move to today when you open it; the old day keeps them as - [>
 - **Ctrl+S**: Save current note
 - **Ctrl+C**: Copy selected text
 - **Ctrl+V**: Paste from clipboard
+- Double-click **MYMAS-1234** / **AUTEL-123**: Open the issue in the browser
 
 ## Todo sidebar
 - **Tab**: Jump into the sidebar
@@ -708,6 +712,8 @@ Unfinished points move to today when you open it; the old day keeps them as - [>
 - **↑** / **↓**: Previous / next day, **Shift+↑** / **Shift+↓**: Between that day's todos
 - **Enter** on a todo: Open that day
 - **Ctrl+D** on a todo: Mark it done
+- **Ctrl+C** on a todo: Copy it with everything under it (to paste to Claude)
+- Double-click an issue key in a todo: Open it in the browser
 
 ## Other
 - **Ctrl+H**: Show this help

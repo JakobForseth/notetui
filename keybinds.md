@@ -32,7 +32,14 @@
 |-----|--------|-----|--------|
 | `Ctrl+S` | Save | `Ctrl+F` | Search notes |
 | `Ctrl+N` | Next day | `Ctrl+K` | Toggle calendar |
-| `Ctrl+P` | Previous day | `Ctrl+C` | Copy selection |
+| `Ctrl+P` | Previous day | `Ctrl+C` | Copy selection (on a todo: the whole todo) |
 | `Ctrl+]` | Next week | `Ctrl+V` | Paste |
 | `Ctrl+[` | Previous week | `Ctrl+H` | Help |
 | `Ctrl+T` | Go to today | `Ctrl+Q` | Quit |
+
+## Mouse
+
+| Action | Result |
+|--------|--------|
+| Double-click a todo | Jump to it in the note |
+| Double-click `MYMAS-1234` / `AUTEL-123` (note or todo list) | Open the issue in the browser |

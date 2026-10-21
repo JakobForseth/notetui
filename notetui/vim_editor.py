@@ -9,6 +9,7 @@ from textual.widgets import TextArea
 from textual.widgets.text_area import TextAreaTheme
 from textual.reactive import reactive
 
+from notetui.links import ISSUE_KEY, issue_at, issue_url
 from notetui.points import (
     NOTES_CLOSE,
     NOTES_OPEN,
@@ -54,6 +55,7 @@ NOTE_THEME = TextAreaTheme(
         "point.moved": Style(color="bright_black", italic=True),
         "notes.marker": Style(color="bright_black"),
         "notes.text": Style(italic=True),
+        "issue": Style(color="cyan", underline=True),
         **{
             f"priority.{level}": Style(color="black", bgcolor=color, bold=True)
             for level, color in PRIORITY_COLORS.items()
@@ -136,6 +138,21 @@ class VimTextArea(TextArea):
                     highlights[note_row].append((0, None, "notes.text"))
                 highlights[end - 1].append((0, None, "notes.marker"))
             row = end
+        # Issue keys look like links; double-click opens them (see _on_click)
+        for row, line in enumerate(lines):
+            for match in ISSUE_KEY.finditer(line):
+                highlights[row].append(
+                    (len(line[:match.start()].encode()), len(line[:match.end()].encode()), "issue")
+                )
+
+    def _on_click(self, event) -> None:
+        """Double-click on an issue key (MYMAS-1234) opens it in the browser."""
+        if event.chain >= 2:
+            row, column = self.get_target_document_location(event)
+            key = issue_at(self.document.get_line(row), column)
+            if key:
+                event.stop()
+                self.app.open_url(issue_url(key))
 
     def _enter_normal_mode(self) -> None:
         """Switch to normal mode."""
