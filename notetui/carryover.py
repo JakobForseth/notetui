@@ -7,6 +7,7 @@ today's copy shows in the sidebar and sends reminders. Checked points stay
 where they are.
 """
 
+import fcntl
 from datetime import datetime
 from pathlib import Path
 
@@ -15,7 +16,18 @@ from notetui.points import notes_end, parse_point
 
 
 def carry_over(note_manager: NoteManager, today: datetime) -> int:
-    """Move open points from earlier days into today's note. Returns how many moved."""
+    """Move open points from earlier days into today's note. Returns how many moved.
+
+    Holds a lock while it works: with notetui open in two places, both carry
+    over at midnight, and without it both could copy the same points to today.
+    The second one waits, then finds them already marked as moved.
+    """
+    with open(note_manager.notes_dir / ".carryover.lock", "w") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        return _carry_over(note_manager, today)
+
+
+def _carry_over(note_manager: NoteManager, today: datetime) -> int:
     today_start = today.replace(hour=0, minute=0, second=0, microsecond=0)
     earlier = []
     for note_file in note_manager.notes_dir.glob("*.md"):
